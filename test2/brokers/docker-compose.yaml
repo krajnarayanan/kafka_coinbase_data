@@ -1,0 +1,127 @@
+x-common-env: &common-broker-env
+  CLUSTER_ID: "${CLUSTER_ID}"
+  KAFKA_PROCESS_ROLES: "broker"
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,BROKER:PLAINTEXT"
+  KAFKA_INTER_BROKER_LISTENER_NAME: "BROKER"
+  KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "1001@${CONTROLER_SERVER}:29091,1002@${CONTROLER_SERVER}:29092,1003@${CONTROLER_SERVER}:29093"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}
+  KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: ${KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS}
+  KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS}
+  KAFKA_MESSAGE_MAX_BYTES: ${KAFKA_MESSAGE_MAX_BYTES} 
+  KAFKA_MAX_REQUEST_SIZE: ${KAFKA_MAX_REQUEST_SIZE}
+  CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+  KAFKA_LOG4J_LOGGERS: "kafka.cluster=WARN,kafka.controller=WARN,kafka.coordinator=WARN,kafka.log=WARN,kafka.server=WARN,kafka.zookeeper=WARN,state.change.logger=WARN"
+  KAFKA_LOG4J_ROOT_LOGLEVEL: "WARN"
+  KAFKA_TOOLS_LOG4J_LOGLEVEL: "WARN"
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  JMX_PORT: 9101 # to use jmx for data collection
+  
+
+services:
+  broker1:
+    container_name: kafka-broker1
+    image: "confluentinc/cp-kafka:7.8.0"
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: ${OPEN_FILE_LIMIT}
+        hard: ${OPEN_FILE_LIMIT}
+  
+    environment:
+      <<: *common-broker-env
+      KAFKA_NODE_ID: "2001"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9094,BROKER://0.0.0.0:28081,EXTERNAL://0.0.0.0:9091"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://broker1:9094,BROKER://${BROKER_SERVER}:28081,EXTERNAL://${BROKER_SERVER}:9091"
+    ports:
+      - "9091:9091"
+      - "28081:28081"
+    volumes:
+      - "broker1-data:/var/lib/kafka/data"
+    healthcheck:
+      test: [ "CMD-SHELL", "JMX_PORT=9105 /usr/bin/kafka-topics --bootstrap-server broker1:9094 --list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  broker2:
+    container_name: kafka-broker2
+    image: "confluentinc/cp-kafka:7.8.0"
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: ${OPEN_FILE_LIMIT}
+        hard: ${OPEN_FILE_LIMIT}
+  
+    environment:
+      <<: *common-broker-env
+      KAFKA_NODE_ID: "2002"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9094,BROKER://0.0.0.0:28082,EXTERNAL://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://broker2:9094,BROKER://${BROKER_SERVER}:28082,EXTERNAL://${BROKER_SERVER}:9092"
+    ports:
+      - "9092:9092"
+      - "28082:28082"
+    volumes:
+      - "broker2-data:/var/lib/kafka/data"
+    depends_on:
+      - broker1
+    healthcheck:
+      test: [ "CMD-SHELL", "JMX_PORT=9105 /usr/bin/kafka-topics --bootstrap-server broker2:9094 --list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      
+  broker3:
+    image: "confluentinc/cp-kafka:7.8.0"
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: ${OPEN_FILE_LIMIT}
+        hard: ${OPEN_FILE_LIMIT}
+    
+    container_name: kafka-broker3
+    environment:
+      <<: *common-broker-env
+      KAFKA_NODE_ID: "2003"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9094,BROKER://0.0.0.0:28083,EXTERNAL://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://broker3:9094,BROKER://${BROKER_SERVER}:28083,EXTERNAL://${BROKER_SERVER}:9093"
+    ports:
+      - "9093:9093"
+      - "28083:28083"
+    volumes:
+      - "broker3-data:/var/lib/kafka/data"
+    depends_on:
+      - broker1
+      - broker2
+    healthcheck:
+      test: [ "CMD-SHELL", "JMX_PORT=9105 /usr/bin/kafka-topics --bootstrap-server broker3:9094 --list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+  
+  kafka-ui:
+    container_name: kafka-ui
+    depends_on:
+      - broker1
+      - broker2
+      - broker3
+    restart: unless-stopped
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker1:9094,broker2:9094,broker3:9094
+      SERVER_SERVLET_CONTEXT_PATH: /kafka-ui
+      AUTH_TYPE: "LOGIN_FORM"
+      SPRING_SECURITY_USER_NAME: ${KAFKA_UI_USER_NAME}
+      SPRING_SECURITY_USER_PASSWORD: ${KAFKA_UI_USER_PASSWORD}
+
+      
+volumes:
+  broker1-data:
+  broker2-data:
+  broker3-data:
+
+    
+  
