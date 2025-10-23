@@ -1,3 +1,14 @@
+x-spark-comon:
+  &spark-common
+  build:
+    context: .
+    dockerfile: Dockerfile.spark
+  volumes:
+    - ./jobs:/opt/spark/jobs
+    - ./dags:/opt/spark/dags
+    - ./notebooks:/home/spark/notebooks
+    - ./data:/opt/spark/data:rw
+
 services:
   controller1:
     image: apache/kafka:4.0.1
@@ -12,12 +23,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_LISTENERS: CONTROLLER://controller1:29091
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://controller1:9092
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
-      #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      #KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      #KAFKA_LOG_DIRS: /kafka/data
     volumes:
       - ./kafka/controller1/data:/kafka/data
     networks:
@@ -136,23 +142,23 @@ services:
     networks:
       bigdata:
         ipv4_address: 172.20.0.7
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    hostname: kafka-ui
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: "local-cluster"
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker1:29094,broker2:29095,broker3:29096"
-      DYNAMIC_CONFIG_ENABLED: 'true'
-    networks:
-      bigdata:
-        ipv4_address: 172.20.0.8
-    depends_on:
-      - broker1
-      - broker2
-      - broker3
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   container_name: kafka-ui
+  #   hostname: kafka-ui
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: "local-cluster"
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker1:29094,broker2:29095,broker3:29096"
+  #     DYNAMIC_CONFIG_ENABLED: 'true'
+  #   networks:
+  #     bigdata:
+  #       ipv4_address: 172.20.0.8
+  #   depends_on:
+  #     - broker1
+  #     - broker2
+  #     - broker3
   schema-registry:
     image: confluentinc/cp-schema-registry:8.1.0
     container_name: schema-registry
@@ -201,6 +207,171 @@ services:
     # - broker2
     # - broker3
     - schema-registry
+
+  spark-master:
+    <<: *spark-common
+
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+    ports:
+      - 7077:7077
+      - 8083:8080
+    volumes:
+      - ./data:/opt/spark/data
+    container_name: spark-master
+    hostname: spark-master
+    command: "/opt/spark/sbin/start-master.sh"
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.11
+
+  spark-worker1:
+
+    <<: *spark-common
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    container_name: spark-worker1
+    hostname: spark-worker1
+    command: "/opt/spark/sbin/start-worker.sh spark://spark-master:7077"    
+
+    depends_on:
+    - spark-master
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.12
+  spark-worker2:
+
+    <<: *spark-common
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    container_name: spark-worker2
+    hostname: spark-worker2
+    command: "/opt/spark/sbin/start-worker.sh spark://spark-master:7077"    
+
+    depends_on:
+    - spark-master
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.13
+  spark-worker3:
+
+    <<: *spark-common
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    container_name: spark-worker3
+    hostname: spark-worker3
+    command: "/opt/spark/sbin/start-worker.sh spark://spark-master:7077"    
+
+    depends_on:
+    - spark-master
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.14        
+  spark-history:
+    <<: *spark-common
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    container_name: spark-history
+    hostname: spark-history 
+    command: "/opt/spark/sbin/start-history-server.sh"    
+    ports:
+      - 18080:18080
+    volumes:
+    - spark-events:/tmp/spark-events 
+    depends_on:
+      - spark-master    
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.15
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.16
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+      - SERVICES=s3,lambda,dynamodb # Specify the services you need
+      - DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock # Required for Lambda functions
+    container_name: localstack
+    hostname: localstack
+    ports:
+      - "4510-4559:4510-4559" # For specific services if needed
+      - "4566:4566" # Default LocalStack port
+      - "8090:8080" # LocalStack Web Application
+    volumes:
+      - ./aws:/etc/localstack/init/ready.d
+      - ./data:/data
+      - "/var/run/docker.sock:/var/run/docker.sock" # For Lambda functions
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.17
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.jupyter
+    user: 
+      root
+    environment:
+      - SPARK_MASTER_HOST=spark-master # Or the container's IP/hostname
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_NO_DAEMONIZE=true # To run master in foreground
+      - SPARK_MASTER_URL=spark://spark-master:7079
+    ports:
+      - 8888:8888
+    container_name: jupyter
+    hostname: jupyter
+    command: "jupyter lab --ip=0.0.0.0 --no-browser  --allow-root --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/home/jupyter/notebooks"
+    depends_on:
+      - spark-master    
+    volumes:
+      - ./data:/opt/spark/data
+      - ./notebooks:/home/jupyter/notebooks
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.18
+volumes:
+  postgres-db-volume:
+  spark-events:
+
 networks:
   bigdata:
     driver: bridge
