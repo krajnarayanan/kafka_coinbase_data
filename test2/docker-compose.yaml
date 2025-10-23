@@ -364,7 +364,9 @@ services:
       - spark-master    
     volumes:
       - ./data:/opt/spark/data
-      - ./notebooks:/home/jupyter/notebooks
+      - ./src/notebooks:/home/jupyter/notebooks
+      - ./src/python:/home/jupyter/python
+
     networks:
       bigdata:
         ipv4_address: 172.20.0.18
