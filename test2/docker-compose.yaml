@@ -13,7 +13,7 @@ services:
       KAFKA_LISTENERS: CONTROLLER://controller1:29091
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
 #      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://controller1:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
       #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       #KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -36,17 +36,31 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_LISTENERS: CONTROLLER://controller2:29092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://controller1:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092
-      #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      #KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      #KAFKA_LOG_DIRS: /kafka/data
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
     volumes:
       - ./kafka/controller2/data:/kafka/data
     networks:
       bigdata:
         ipv4_address: 172.20.0.3        
+  controller3:
+    image: apache/kafka:4.0.1
+    container_name: controller3
+    hostname: controller3
+    ports:
+      - "29093:29093"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: controller
+      CLUSTER_ID: "5tOLArBHTI-H9yT1Cl87FQ"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://controller3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,controller3:29093
+    volumes:
+      - ./kafka/controller3/data:/kafka/data
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.4           
   broker1:
     image: apache/kafka:4.0.1
     container_name: broker1
@@ -61,7 +75,7 @@ services:
       KAFKA_LISTENERS: BROKER://broker1:29094
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_ADVERTISED_LISTENERS: BROKER://broker1:29094
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
       KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
       #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -71,7 +85,7 @@ services:
       - ./kafka/broker1/data:/kafka/data
     networks:
       bigdata:
-        ipv4_address: 172.20.0.4
+        ipv4_address: 172.20.0.5
   broker2:
     image: apache/kafka:4.0.1
     container_name: broker2
@@ -86,7 +100,7 @@ services:
       KAFKA_LISTENERS: BROKER://broker2:29095
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_ADVERTISED_LISTENERS: BROKER://broker2:29095
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
       KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
       #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -96,7 +110,32 @@ services:
       - ./kafka/broker2/data:/kafka/data
     networks:
       bigdata:
-        ipv4_address: 172.20.0.5        
+        ipv4_address: 172.20.0.6
+  broker3:
+    image: apache/kafka:4.0.1
+    container_name: broker3
+    hostname: broker3
+    ports:
+      - "29096:29096"
+    environment:
+      KAFKA_NODE_ID: 6
+      KAFKA_PROCESS_ROLES: broker
+      CLUSTER_ID: "5tOLArBHTI-H9yT1Cl87FQ"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,BROKER:PLAINTEXT
+      KAFKA_LISTENERS: BROKER://broker3:29096
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_ADVERTISED_LISTENERS: BROKER://broker3:29096
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller1:29091,2@controller2:29092,3@controller3:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      #KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      #KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      #KAFKA_LOG_DIRS: /kafka/data
+    volumes:
+      - ./kafka/broker3/data:/kafka/data
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.7
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -105,14 +144,63 @@ services:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: "local-cluster"
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker1:29094"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker1:29094,broker2:29095,broker3:29096"
       DYNAMIC_CONFIG_ENABLED: 'true'
     networks:
       bigdata:
-        ipv4_address: 172.20.0.6
+        ipv4_address: 172.20.0.8
     depends_on:
       - broker1
       - broker2
+      - broker3
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.1.0
+    container_name: schema-registry
+    hostname: schema-registry
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker1:29094,broker2:29095,broker3:29096
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+    networks:
+      bigdata:
+        ipv4_address: 172.20.0.9
+    depends_on:
+    - broker1
+    - broker2
+    - broker3
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.2.2
+    container_name: console
+    hostname: console
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    ports:
+      - "8082:8080"
+    environment:
+      # KAFKA_BROKERS: broker1:29094,broker2:29095,broker3:29096
+      # KAFKA_SCHEMA_REGISTRY_URLS: http://schema-registry:8081
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers:
+            - "broker1:29094"
+            - "broker2:29095"
+            - "broker3:29096"
+        schemaRegistry:
+          enabled: true
+          urls: 
+            - "http://schema-registry:8081"
+    networks: 
+      bigdata:
+        ipv4_address: 172.20.0.10
+    depends_on:
+    # - broker1
+    # - broker2
+    # - broker3
+    - schema-registry
 networks:
   bigdata:
     driver: bridge

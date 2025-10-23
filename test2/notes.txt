@@ -85,4 +85,6 @@ docker run -it -p 8080:8080 --network host \
 provectuslabs/kafka-ui 
 
 
+ curl -v telnet://localhost:9092^C
+
 
